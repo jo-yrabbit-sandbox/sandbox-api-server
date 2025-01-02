@@ -19,11 +19,9 @@ class RedisHandler():
         key = f"state:{state}:messages"
         
         # Get message_ids
-        print(1)
         message_ids = self.redis_client.lrange(key, 0, limit-1)
         if not message_ids:
             raise Exception(f'Failed to get latest {limit} messages using key {key}')
-        print(2)
 
         # Get message_data
         messages = []
@@ -32,23 +30,7 @@ class RedisHandler():
             if message_data:
                 messages.append(message_data)
 
-        print(3)
         return messages  # list
-
-
-    def store_message(self, state, message) -> bool:
-        """Store message in redis"""
-        key = f"state:{state}:messages"
-        try:
-            self.redis_client.lpush(key, message)
-        except Exception as e:
-            raise Exception('Failed to push store message - {}', e.args)
-        
-        # TODO: Make configurable
-        try:
-            self.redis_client.ltrim(key, 0, 99)
-        except Exception as e:
-            raise Exception('Failed to purge messages exceeding capacity (100) - {}', e.args)
 
 
     def start(self, redis_host, redis_port, redis_password):
@@ -69,9 +51,8 @@ class RedisHandler():
         self.redis_client = client
 
 
-    def store_message(self, bot_id, state, text) -> bool:
+    def store_message(self, bot_id, state, text, timestamp) -> bool:
         """Store message in valid format"""
-
         if not self.redis_client:
             raise Exception('ERROR: Client has not been initialized yet. Run `start` to start the client before interacting with it')
 
@@ -83,7 +64,8 @@ class RedisHandler():
         message_data = {
             "bot_id" : bot_id,
             "state": state,
-            "text" : text
+            "text" : text,
+            "timestamp": timestamp
         }
         self.redis_client.hset(message_id, mapping=message_data)
 
@@ -98,3 +80,5 @@ class RedisHandler():
             self.redis_client.ltrim(key, 0, 99)
         except Exception as e:
             raise Exception('Failed to purge messages exceeding capacity (100) - {}', e.args)
+
+        return message_id

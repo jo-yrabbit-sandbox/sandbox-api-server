@@ -4,17 +4,48 @@
 ```sh
 cd <top-level>  # top-level directory containing Dockerfile
 docker-compose up
+
+# If you've changed source code
+docker compose up --build --force-recreate
 ```
 
 ### Test that it's working correctly
-1. Open Url: http://localhost:5000/api/v1/health
+1. Sanity check that api-server is running
+Url: http://localhost:5000/api/v1/health
+Curl command: `curl -X GET http://localhost:5000/api/v1/health`
 ```json
 {"status":"healthy"}
 ```
-2. Make a request: http://localhost:5000/api/v1/messages/latest?state=test
-Note that error is expected because redis database has nothing stored in it at this time
+
+2. Get latest message
+Url: http://localhost:5000/api/v1/messages/latest?state=test_state
+Curl command: `curl -X GET http://localhost:5000/api/v1/messages/latest?state=test_state`
+* If messages have been stored in redis, expect outputs like this
 ```json
-{"error":"Error getting latest message - Failed to get latest 1 messages using key state:positive:messages"}
+{"message":"{'bot_id': 'test_bot_id', 'state': 'test_state', 'text': 'test_text', 'timestamp': 'test_timestamp'}"}
+```
+* If no messages have been stored in redis, error is expected because redis database has nothing stored in it at this time
+```json
+{"error":"Error getting latest message - Failed to get latest 1 messages using key state:test_state:messages"}
+```
+
+3. Store a message
+* Create `test_message.json` 
+```json
+{
+  "bot_id": "test_bot_id",
+  "message": {
+    "state": "test_state",
+    "text": "test_text",
+    "timestamp": "test_timestamp"
+  }
+}
+```
+* Pass it to curl command to store it
+```sh
+curl -0 -v POST http://localhost:5000/api/v1/messages \
+  -H "Content-Type: text/json; charset=utf-8" \
+  -d @test_message.json
 ```
 
 ### Notes

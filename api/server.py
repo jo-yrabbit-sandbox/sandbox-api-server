@@ -35,19 +35,44 @@ def get_latest_message():
     try:
         state = request.args.get('state')  # TODO:  Add bot_id to accommodate multiple bots
         if not state:
-            return jsonify({'error': 'Missing required field `state`'})  # return Bad request error 400
-
+            return jsonify({'error': 'Missing required field `state`'}), 400
         logger.debug(f'Processing: {state}')
 
         message = redis_handler.get_latest_message(state)
-        return jsonify({'message': message + state})
+        return jsonify({'message': str(message)})
 
     except Exception as e:
         message = f'Error getting latest message - {e.args[0]}'
         logger.error(message)
-        return jsonify({'error': message})  # return Internal server error 500
+        return jsonify({'error': message}), 500
 
 
-# Only if you want to test running directly with Python
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+@app.route('/api/v1/messages', methods=['POST'])  # TODO: Add following decorators later: @require_api_key @limiter.limit("30 per minute")
+def store_message():
+    """Store a new message"""
+    try:
+        data = request.get_json()
+
+        # Validate required fields
+        required_fields = ['bot_id', 'message']
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Validate message structure
+        message = data['message']
+        if not all(field in message for field in ['state', 'text', 'timestamp']):
+            return jsonify({"error": "Invalid message structure"}), 400
+
+        # Store message
+        stored = redis_handler.store_message(
+            bot_id=data['bot_id'],
+            state=message['state'],
+            text=message['text'],
+            timestamp=message['timestamp'],
+        )
+
+        return jsonify({"success": True, "message_id": stored}), 201
+
+    except Exception as e:
+        logger.error(f"Error storing message: {str(e)}")
+        return jsonify({"error": f"Internal server error - {str(e)}"}), 500
