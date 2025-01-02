@@ -1,5 +1,11 @@
 ## How to run locally
 
+### Test locally
+```sh
+cd <top-level>  # top-level directory containing Dockerfile
+python -m run
+```
+
 ### To build and run
 ```sh
 cd <top-level>  # top-level directory containing Dockerfile
@@ -22,6 +28,14 @@ docker logs api-server  # Look at logs to see why container stopped
 
 ### Test that it's working correctly
 1. Open Url: http://localhost:5000/api/v1/health
+```json
+{"status":"healthy"}
+```
+2. Make a request: http://localhost:5000/api/v1/messages/latest?state=test
+```json
+{"message":"haha"}
+```
+
 
 
 ### Teardown
