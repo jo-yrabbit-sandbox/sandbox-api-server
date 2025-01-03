@@ -47,6 +47,29 @@ def get_latest_message():
         return jsonify({'error': message}), 500
 
 
+@app.route('/api/v1/messages', methods=['GET'])
+def get_messages():
+    """Get messages"""
+    try:
+        # bot_id = request.args.get('bot_id')  # TODO:  Add bot_id to accommodate multiple bots
+        limit = request.args.get('limit')
+        if not state:
+            return jsonify({'error': 'Missing required field `limit`'}), 400
+        state = request.args.get('state')
+        if not state:
+            return jsonify({'error': 'Missing required field `state`'}), 400
+
+        logger.debug(f'Processing: {state}')
+        messages = redis_handler.get_messages(state, limit=limit)
+
+        return jsonify({'messages': messages})
+
+    except Exception as e:
+        m = f'Error getting last {limit} messages - {e.args[0]}'
+        logger.error(m)
+        return jsonify({'error': m}), 500
+
+
 @app.route('/api/v1/messages', methods=['POST'])  # TODO: Add following decorators later: @require_api_key @limiter.limit("30 per minute")
 def store_message():
     """Store a new message"""
@@ -74,5 +97,6 @@ def store_message():
         return jsonify({"success": True, "message_id": stored}), 201
 
     except Exception as e:
-        logger.error(f"Error storing message: {str(e)}")
-        return jsonify({"error": f"Internal server error - {str(e)}"}), 500
+        m = f"Error storing message: {str(e.args[0])}"
+        logger.error(m)
+        return jsonify({"error": f"Internal server error: {m}"}), 500
