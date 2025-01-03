@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-# from flask_cors import CORS  # TODO: Enable for auth
+from flask_cors import CORS  # TODO: Enable auth
 
 from api.redis_handler import RedisHandler
 
@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 # Note: If you change attribute name `app` for this flask server,
 # make sure you edit the Dockerfile gunicorn command arg too
 app = Flask(__name__)
-# CORS(app)  # TODO: Enable for auth
+CORS(app)  # TODO: Enable auth
+# # Or for specific origins:
+# CORS(app, resources={
+#     r"/*": {
+#         "origins": ["http://localhost:8000"]
+#     }
+# })
 redis_handler = RedisHandler()
 redis_handler.start(redis_host=os.getenv('REDIS_HOST', 'localhost'),
                     redis_port=int(os.getenv('REDIS_PORT', 6397)),
@@ -26,12 +32,14 @@ redis_handler.start(redis_host=os.getenv('REDIS_HOST', 'localhost'),
 
 @app.route('/api/v1/health', methods=['GET'])
 def health_check():
+    print('Received request: health')
     return jsonify({"status": "healthy"})
 
 
 @app.route('/api/v1/messages/latest', methods=['GET'])
 def get_latest_message():
     """Get latest message"""
+    print('Received request: get_latest_message')
     try:
         state = request.args.get('state')  # TODO:  Add bot_id to accommodate multiple bots
         if not state:
@@ -39,6 +47,7 @@ def get_latest_message():
         logger.debug(f'Processing: {state}')
 
         message = redis_handler.get_latest_message(state)
+        print(f'Returning as jsonified string: {message}')
         return jsonify({'message': str(message)})
 
     except Exception as e:
@@ -50,6 +59,7 @@ def get_latest_message():
 @app.route('/api/v1/messages', methods=['GET'])
 def get_messages():
     """Get messages"""
+    print('Received request: get_messages')
     try:
         # bot_id = request.args.get('bot_id')  # TODO:  Add bot_id to accommodate multiple bots
         limit = request.args.get('limit')
@@ -73,6 +83,7 @@ def get_messages():
 @app.route('/api/v1/messages', methods=['POST'])  # TODO: Add following decorators later: @require_api_key @limiter.limit("30 per minute")
 def store_message():
     """Store a new message"""
+    print('Received request: store_message')
     try:
         data = request.get_json()
 
