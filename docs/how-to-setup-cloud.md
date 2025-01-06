@@ -75,8 +75,8 @@
 * `Instance type`: t2.micro (free tier eligible)
 * `Key pair`: Create a new pair and securely store the `your-key.pem` file somewhere
 * `Network settings`
-  * <Select the VPC ID created in previous step>
-  * <Select the *public* subnets you created in previous step>!!!
+  * \<Select the VPC ID created in previous step\>
+  * \<Select the *public* subnets you created in previous step\>!!!
   * `Auto-assign public IP`: Enable
   * Select `Create new security group`
     * `Name`: sandbox-api-server-ec2-sg
