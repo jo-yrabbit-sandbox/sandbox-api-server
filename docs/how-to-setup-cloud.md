@@ -37,7 +37,7 @@
 3. Configure:
 * `Security group name`: sandbox-redis-elasticache-sg
 * `Description`: Security group for Redis ElastiCache cluster (best practice to document this!)
-* `VPC`: <Select the VPC ID created in previous step>
+* `VPC`: \<Select the VPC ID created in previous step\>
 * `Inbound rules`: (set to below for now, and we'll update this later)
   * `Type`: Custom TCP
   * `Port`: 6379
@@ -61,10 +61,10 @@
 * Connectivity:
   * `Subnet groups`: Create a new subnet group
   * `Name`: sandbox-vpc
-  * `VPC ID`: <Select the VPC ID created in previous step>
-  * `Subnets`: <Select 2 private subnets created in previous step>
+  * `VPC ID`: \<Select the VPC ID created in previous step\>
+  * `Subnets`: \<Select 2 private subnets created in previous step\>
 * Advanced settings:
-  * `Security`: <Select the VPC ID created in previous step>
+  * `Security`: \<Select the VPC ID created in previous step\>
 
 #### Create cloud instance of api-server (EC2)
 1. Go to AWS Console → EC2
@@ -81,9 +81,9 @@
   * Select `Create new security group`
     * `Name`: sandbox-api-server-ec2-sg
     * `Description`: Security group for Ubuntu 22.04 LTS EC2
-    * Add the following `Inbound rules`. AWS console will have <your public IP address> in dropdown as `My IP` but if you want to double check, look it up at [https://whatismyip.com] or `curl ifconfig.me`
-      * Custom ICMP - IPv4, Echo Request (Not reply), from <your public IP address>/32
-      * SSH, Port 22, from <your public IP address>/32
+    * Add the following `Inbound rules`. AWS console will have \<your public IP address\> in dropdown as `My IP` but if you want to double check, look it up at [https://whatismyip.com] or `curl ifconfig.me`
+      * Custom ICMP - IPv4, Echo Request (Not reply), from \<your public IP address\>/32
+      * SSH, Port 22, from \<your public IP address\>/32
       * Custom TCP, Port 5000, from 0.0.0.0/0
       * HTTP, Port 80, from 0.0.0.0/0
 4. Note the Public DNS for your new EC2 instance for next step. Ping it from your PC:
@@ -106,9 +106,9 @@ ssh -i your-key.pem ubuntu@your-ec2-public-dns
 * Go to EC2 security group (sandbox-api-server-ec2-sg)
   * Add inbound rule to allow traffic to Redis:
     * Custom TCP, Port 6379, Source: redis-security-group ID
-* Go to Redis ElastiCache security group ()
+* Go to Redis ElastiCache security group (sandbox-redis-elasticache-sg)
   * Add inbound rule (AWS console will not allow you to edit the existing one, so delete the existing one):
-    * Custom TCP, Port 6379, Source: sandbox-redis-elasticache-sg
+    * Custom TCP, Port 6379, Source: sandbox-api-server-ec2-sg
 
 ### Deploy (manual)
 

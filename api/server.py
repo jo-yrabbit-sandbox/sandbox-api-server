@@ -89,9 +89,13 @@ def get_messages():
     app.logger.info('Received: get_messages')
     try:
         # bot_id = request.args.get('bot_id')  # TODO: Better to filter by bot_id to accommodate multiple bots
-        limit = request.args.get('limit')
-        if not limit:
+        limit_str = request.args.get('limit')
+        if not limit_str:
             return jsonify({'error': 'Missing required field `limit`'}), 400
+        try:
+            limit = int(limit_str)
+        except Exception as e:
+            raise Exception(f'Limit \"{limit_str}\" could not be converted to int')
         state = request.args.get('state')
         if not state:
             return jsonify({'error': 'Missing required field `state`'}), 400
