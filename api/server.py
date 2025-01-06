@@ -1,34 +1,61 @@
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS  # TODO: Enable auth
+import logging
+from logging.handlers import RotatingFileHandler
+import os
 
 from api.redis_handler import RedisHandler
 
-import logging
-import os
-
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
+# Load environment variables if ../.env exists
+dotenv = os.path.isfile(os.path.join(
+    os.path.dirname(os.path.dirname(
+        os.path.normpath(__file__))), '.env'))
+if os.path.isfile(dotenv):
+    load_dotenv(dotenv)
 
 # Note: If you change attribute name `app` for this flask server,
 # make sure you edit the Dockerfile gunicorn command arg too
 app = Flask(__name__)
-CORS(app)  # TODO: Enable auth
-# # Or for specific origins:
-# CORS(app, resources={
-#     r"/*": {
-#         "origins": ["http://localhost:8000"]
-#     }
-# })
-redis_handler = RedisHandler()
-redis_handler.start(redis_host=os.getenv('REDIS_HOST', 'localhost'),
-                    redis_port=int(os.getenv('REDIS_PORT', 6397)),
-                    redis_password=os.getenv('REDIS_PASSWORD'))
 
+# Note: For debugging, replace with CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:8000"]
+    }
+})
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [f"{os.getenv('WEBSITE_URL', 'http://localhost:8000')}"],
+        "methods": ["GET"],
+        "allow_headers": ["Content-Type"]
+    }
+})
+
+# Configure logging
+if not os.path.exists('logs'):
+    os.mkdir('logs')
+file_handler = RotatingFileHandler('logs/app.log', maxBytes=10240, backupCount=10)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+file_handler.setLevel(logging.INFO)
+app.logger.addHandler(file_handler)
+app.logger.setLevel(logging.INFO)
+app.logger.info('API server startup')
+
+# Configure redis
+try:
+    redis_handler = RedisHandler(logger=app.logger)
+    redis_handler.start(redis_host=os.getenv('REDIS_HOST', 'localhost'),
+                        redis_port=int(os.getenv('REDIS_PORT', 6397)),
+                        redis_password=os.getenv('REDIS_PASSWORD'))
+    app.logger.info('Connected to redis')
+except Exception as e:
+    app.logger.info(f'Failed to connect to redis - {str(e)}')
+
+
+####
+# Routes
+####
 
 @app.route('/api/v1/health', methods=['GET'])
 def health_check():
@@ -39,44 +66,45 @@ def health_check():
 @app.route('/api/v1/messages/latest', methods=['GET'])
 def get_latest_message():
     """Get latest message"""
-    print('Received request: get_latest_message')
+    app.logger.info('Received: get_latest_message')
     try:
-        state = request.args.get('state')  # TODO:  Add bot_id to accommodate multiple bots
+        state = request.args.get('state')  # TODO: Better to filter by bot_id to accommodate multiple bots
         if not state:
             return jsonify({'error': 'Missing required field `state`'}), 400
-        logger.debug(f'Processing: {state}')
 
+        app.logger.info(f'Processing request for latest message with {state=}')
         message = redis_handler.get_latest_message(state)
-        print(f'Returning as jsonified string: {message}')
+        print(f'Got latest message: {message}')
         return jsonify({'message': str(message)})
 
     except Exception as e:
-        message = f'Error getting latest message - {e.args[0]}'
-        logger.error(message)
+        message = f'Failed to get latest message - {e.args[0]}'
+        app.logger.error(message)
         return jsonify({'error': message}), 500
 
 
 @app.route('/api/v1/messages', methods=['GET'])
 def get_messages():
     """Get messages"""
-    print('Received request: get_messages')
+    app.logger.info('Received: get_messages')
     try:
-        # bot_id = request.args.get('bot_id')  # TODO:  Add bot_id to accommodate multiple bots
+        # bot_id = request.args.get('bot_id')  # TODO: Better to filter by bot_id to accommodate multiple bots
         limit = request.args.get('limit')
-        if not state:
+        if not limit:
             return jsonify({'error': 'Missing required field `limit`'}), 400
         state = request.args.get('state')
         if not state:
             return jsonify({'error': 'Missing required field `state`'}), 400
 
-        logger.debug(f'Processing: {state}')
+        app.logger.info(f'Processing request for last {limit} messages with {state=}')
         messages = redis_handler.get_messages(state, limit=limit)
 
+        app.logger.info(f'Successfully received last {limit} messages with {state=}')
         return jsonify({'messages': messages})
 
     except Exception as e:
         m = f'Error getting last {limit} messages - {e.args[0]}'
-        logger.error(m)
+        app.logger.error(m)
         return jsonify({'error': m}), 500
 
 
@@ -91,23 +119,27 @@ def store_message():
         required_fields = ['bot_id', 'message']
         if not all(field in data for field in required_fields):
             return jsonify({"error": "Missing required fields"}), 400
+        bot_id = data['bot_id']
 
         # Validate message structure
         message = data['message']
         if not all(field in message for field in ['state', 'text', 'timestamp']):
             return jsonify({"error": "Invalid message structure"}), 400
+        state = message['state']
 
         # Store message
-        stored = redis_handler.store_message(
-            bot_id=data['bot_id'],
-            state=message['state'],
+        app.logger.info(f'Processing request to store message from {bot_id=} with {state=}')
+        message_id = redis_handler.store_message(
+            bot_id=bot_id,
+            state=state,
             text=message['text'],
             timestamp=message['timestamp'],
         )
 
-        return jsonify({"success": True, "message_id": stored}), 201
+        app.logger.info(f'Successfully stored messages from {bot_id=} with {state=}')
+        return jsonify({"success": True, "message_id": message_id}), 201
 
     except Exception as e:
-        m = f"Error storing message: {str(e.args[0])}"
-        logger.error(m)
-        return jsonify({"error": f"Internal server error: {m}"}), 500
+        m = f"Error storing message - {str(e)}"
+        app.logger.error(m)
+        return jsonify({"error": f"Internal server error - {m}"}), 500

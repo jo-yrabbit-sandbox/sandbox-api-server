@@ -3,7 +3,7 @@ import time
 
 class RedisHandler():
 
-    def __init__(self, logger=None):
+    def __init__(self, logger):
         self.redis_client = None
         self.logger = logger
 
@@ -49,6 +49,7 @@ class RedisHandler():
             self.logger.error('Failed to start a new redis client - {}', e.args)
         
         self.redis_client = client
+        self.logger.info(f'Successfully started redis client ({redis_host}:{redis_port})')
 
 
     def store_message(self, bot_id, state, text, timestamp) -> bool:
@@ -57,6 +58,7 @@ class RedisHandler():
             raise Exception('ERROR: Client has not been initialized yet. Run `start` to start the client before interacting with it')
 
         # Set message id as unique hash
+        # TODO: Replace with hash
         message_id = f'msg:{int(time.time()*1000)}'
 
         # TODO: Document schema in doc/api-specification.md
@@ -81,4 +83,5 @@ class RedisHandler():
         except Exception as e:
             raise Exception('Failed to purge messages exceeding capacity (100) - {}', e.args)
 
+        self.logger.info(f'Successfully stored {message_id=}')
         return message_id
