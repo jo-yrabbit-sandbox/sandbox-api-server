@@ -76,16 +76,12 @@ Go to AWS Console > IAM > Policies > Create policy
         {
             "Effect": "Allow",
             "Action": [
-                "ec2:DescribeInstances",
                 "elasticache:DescribeCacheClusters",
-                "elasticache:DescribeReplicationGroups"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
+                "elasticache:DescribeReplicationGroups",
                 "ec2:DescribeInstances",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:RevokeSecurityGroupIngress",
+                "ec2:DescribeSecurityGroups",
                 "ec2-instance-connect:SendSSHPublicKey"
             ],
             "Resource": "*"
@@ -185,11 +181,12 @@ You will need:
 #### Set your secrets in GitHub repo
 1. Go to your repo in Github > Settings > (left column) Secrets and variables > Actions
 2. Add the following New repository secrets:
-    * Set `AWS_REGION` to region of s3 bucket (e.g. `us-east-2`)
+    * Set `AWS_REGION` of EC2 and ElastiCache instances (should be in same region)
     * Set `AWS_ROLE_ARN` associated with the previously created role `my-repo-name-deployer`
     * Set `REDIS_HOST` to your ElastiCache endpoint
     * Set `EC2_INSTANCE_ID` of your EC2 instance
     * Set `EC2_USERNAME` set to default (usually `ubuntu`)
+    * Set `EC2_SSH_KEY` to the contents of the private key file created with EC2 instance
 
 Create a new workflow file
 ```sh
@@ -197,21 +194,133 @@ mkdir -p .github/workflows/
 touch .github/workflows/deploy.yml
 ```
 ```yaml
+name: Deploy to AWS
+on:
+  push:
+    branches: [ main ]
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
-    
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+          role-duration-seconds: 900
 
-# Add your deployment steps here
+      - name: Update Security Group
+        run: |
+          # Get runner's public IP
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "Runner IP: $RUNNER_IP"
+          
+          # Get security group ID
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].SecurityGroups[0].GroupId' \
+            --output text)
+          echo "Security Group ID: $SG_ID"
+          
+          # Add temporary rule for GitHub runner
+          aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 22 \
+            --cidr $RUNNER_IP/32
+
+      - name: Setup SSH and Test Connection
+        run: |
+          # Setup SSH directory and files
+          mkdir -p ~/.ssh
+          touch ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/known_hosts
+
+          # Add EC2 key
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+
+          # Get EC2 DNS
+          EC2_PUBLIC_DNS=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].PublicDnsName' \
+            --output text)
+          echo "EC2 Public DNS: $EC2_PUBLIC_DNS"
+
+          # Disable strict host key checking for this connection
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+          # Test SSH connection
+          ssh -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'echo "SSH connection test successful"'
+
+      - name: Check EC2 Status
+        run: |
+          aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].[State.Name,Status.Status]' \
+            --output text
+
+      - name: Deploy to EC2
+        env:
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+        run: |
+          # Debug EC2 instance info
+          echo "Getting EC2 information..."
+          EC2_PUBLIC_DNS=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].PublicDnsName' \
+            --output text)
+          echo "EC2 Public DNS: $EC2_PUBLIC_DNS"
+
+          # Debug known_hosts
+          # Try ssh-keyscan with verbose output
+          echo "Running ssh-keyscan with verbose output..."
+          ssh-keyscan -v -H $EC2_PUBLIC_DNS 2>&1
+          echo "known_hosts content:"
+          cat ~/.ssh/known_hosts
+
+          echo "Starting deployment..."
+          ssh -v -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'bash -s' < scripts/deploy.sh
+        
+          # Print deploy.sh content for debugging
+          echo "Content of deploy.sh:"
+          cat scripts/deploy.sh
+
+      - name: Cleanup Security Group
+        if: always()
+        run: |
+          # Get the current IP and security group ID again
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].SecurityGroups[0].GroupId' \
+            --output text)
+          
+          # Check if the rule exists before trying to remove it
+          RULE_EXISTS=$(aws ec2 describe-security-groups \
+            --group-ids $SG_ID \
+            --filters "Name=ip-permission.cidr,Values=$RUNNER_IP/32" \
+            --filters "Name=ip-permission.from-port,Values=22" \
+            --query 'SecurityGroups[*].IpPermissions[?FromPort==`22`]' \
+            --output text)
+          
+          if [ ! -z "$RULE_EXISTS" ]; then
+            echo "Removing temporary security group rule..."
+            aws ec2 revoke-security-group-ingress \
+              --group-id $SG_ID \
+              --protocol tcp \
+              --port 22 \
+              --cidr $RUNNER_IP/32
+          else
+            echo "Security group rule not found, skipping removal"
+          fi
 ```
