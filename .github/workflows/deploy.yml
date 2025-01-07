@@ -13,6 +13,26 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Update Security Group
+        run: |
+          # Get runner's public IP
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "Runner IP: $RUNNER_IP"
+          
+          # Get security group ID
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].SecurityGroups[0].GroupId' \
+            --output text)
+          echo "Security Group ID: $SG_ID"
+          
+          # Add temporary rule for GitHub runner
+          aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 22 \
+            --cidr $RUNNER_IP/32
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -66,3 +86,19 @@ jobs:
           # Print deploy.sh content for debugging
           echo "Content of deploy.sh:"
           cat scripts/deploy.sh
+
+      - name: Cleanup Security Group
+        if: always()  # Run even if deployment fails
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].SecurityGroups[0].GroupId' \
+            --output text)
+          
+          # Remove temporary rule
+          aws ec2 revoke-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 22 \
+            --cidr $RUNNER_IP/3
