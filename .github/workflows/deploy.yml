@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-duration-seconds: 900
+
       - name: Update Security Group
         run: |
           # Get runner's public IP
@@ -32,13 +39,6 @@ jobs:
             --protocol tcp \
             --port 22 \
             --cidr $RUNNER_IP/32
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          role-duration-seconds: 900
 
       - name: Setup SSH
         run: |
