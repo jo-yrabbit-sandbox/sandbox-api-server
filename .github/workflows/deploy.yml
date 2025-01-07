@@ -1,0 +1,54 @@
+name: Deploy to AWS
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-duration-seconds: 900
+
+      - name: Create SSH directory
+        run: mkdir -p ~/.ssh/
+        
+      - name: Generate SSH key pair
+        run: ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+
+      - name: Push SSH public key to EC2 instance
+        run: |
+          aws ec2-instance-connect send-ssh-public-key \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
+            --availability-zone ${{ secrets.AWS_REGION }}a \
+            --instance-os-user ${{ secrets.EC2_USERNAME }} \
+            --ssh-public-key file://~/.ssh/id_rsa.pub
+
+      - name: Deploy to EC2
+        env:
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+        run: |
+          # Add instance to known hosts
+          ssh-keyscan -H $(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].PublicDnsName' \
+            --output text) >> ~/.ssh/known_hosts
+
+          # Get EC2 public DNS
+          EC2_PUBLIC_DNS=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].PublicDnsName' \
+            --output text)
+
+          # Deploy using SSH
+          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'bash -s' < scripts/deploy.sh

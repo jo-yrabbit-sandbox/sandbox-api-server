@@ -56,10 +56,11 @@ Expected response:
 
 ### Test with redis
 
-Here we will describe how to:
-* Run both Flask application and redis backend locally
+Here we will describe how to run both Flask application and redis backend locally
+* (Recommended) Start both services with `docker-compose.yml`
+* (Not recommended) Run `api-server` in standalone, and run `redis` as separate docker container on `localhost:6379`
 
-#### How to run your containers locally
+#### Option 1: How to run your containers with docker compose
 1. This is for testing your `docker-compose.yml`. We assume that you have the following already working:
 * `Dockerfile` for `api-server` exists
 * `.env` file has `REDIS_HOST=redis` matches whatever you specified in your `Dockerfile`
@@ -71,6 +72,35 @@ docker-compose up
 
 # If you've changed source code
 docker compose up --build --force-recreate
+```
+
+#### Option 2: Run in standalone
+
+1. Refer to previous section to run api-server in container
+2. Run vanilla `redis` in another container on `localhost:6379`
+* Install redis in Docker
+```sh
+# Pull the Redis image
+docker pull redis
+
+# Run Redis container
+# If running locally, configurations are:
+#   - REDIS_HOST="localhost"
+#   - REDIS_PORT=6379
+#   - REDIS_PASSWORD=""
+docker run --name local-redis -p 6379:6379 -d redis
+
+# To check if it's running
+docker ps
+
+# To see Redis logs
+docker logs local-redis
+```
+
+* When you're done, stop and remove the Redis container
+```sh
+docker stop local-redis
+docker rm local-redis
 ```
 
 #### Test endpoints
