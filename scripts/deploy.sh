@@ -1,5 +1,8 @@
 #!/bin/bash
-set -e
+set -x  # Print commands and their arguments as they are executed
+trap 'echo "Error on line $LINENO"' ERR  # Print line number where any error occurs
+
+# set -e
 
 echo "Starting deployment..."
 

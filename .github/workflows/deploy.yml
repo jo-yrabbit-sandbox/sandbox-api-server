@@ -25,22 +25,36 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
+          # Debug output
+          ls -la ~/.ssh/ec2_key.pem
+          echo "SSH key permissions set"
 
       - name: Deploy to EC2
         env:
           REDIS_HOST: ${{ secrets.REDIS_HOST }}
         run: |
-          # Add instance to known hosts
-          ssh-keyscan -H $(aws ec2 describe-instances \
-            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-            --query 'Reservations[*].Instances[*].PublicDnsName' \
-            --output text) >> ~/.ssh/known_hosts
-          
-          # Get EC2 public DNS
+          # Debug EC2 instance info
+          echo "Getting EC2 information..."
           EC2_PUBLIC_DNS=$(aws ec2 describe-instances \
             --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
             --query 'Reservations[*].Instances[*].PublicDnsName' \
             --output text)
-          
-          # Deploy using SSH with the EC2 key
-          ssh -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'bash -s' < scripts/deploy.sh
+          echo "EC2 Public DNS: $EC2_PUBLIC_DNS"
+
+          # Debug known_hosts
+          echo "Adding to known_hosts..."
+          ssh-keyscan -H $EC2_PUBLIC_DNS >> ~/.ssh/known_hosts
+          echo "known_hosts content:"
+          cat ~/.ssh/known_hosts
+
+          # Test SSH connection with verbose output
+          echo "Testing SSH connection..."
+          ssh -v -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'echo "SSH connection successful"'
+        
+          # If SSH test succeeds, run deployment
+          echo "Starting deployment..."
+          ssh -v -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'bash -s' < scripts/deploy.sh
+        
+          # Print deploy.sh content for debugging
+          echo "Content of deploy.sh:"
+          cat scripts/deploy.sh
