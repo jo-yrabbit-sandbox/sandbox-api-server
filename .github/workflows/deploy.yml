@@ -20,26 +20,27 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
           role-duration-seconds: 900
 
-      - name: Create SSH directory
-        run: mkdir -p ~/.ssh/
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+
+    - name: Deploy to EC2
+      env:
+        REDIS_HOST: ${{ secrets.REDIS_HOST }}
+      run: |
+        # Add instance to known hosts
+        ssh-keyscan -H $(aws ec2 describe-instances \
+          --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+          --query 'Reservations[*].Instances[*].PublicDnsName' \
+          --output text) >> ~/.ssh/known_hosts
         
-      - name: Generate SSH key pair
-        run: ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
-
-      - name: Push SSH public key to EC2 instance
-        run: |
-          aws ec2-instance-connect send-ssh-public-key \
-            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
-            --availability-zone ${{ secrets.AWS_REGION }}a \
-            --instance-os-user ${{ secrets.EC2_USERNAME }} \
-            --ssh-public-key file://~/.ssh/id_rsa.pub
-
-      - name: Deploy to EC2
-        env:
-          REDIS_HOST: ${{ secrets.REDIS_HOST }}
-        run: |
-          # Add instance to known hosts
-          ssh-keyscan -H $(aws ec2 describe-instances \
-            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-            --query 'Reservations[*].Instances[*].PublicDnsName' \
-            --output text) >> ~/.ssh/known_hosts
+        # Get EC2 public DNS
+        EC2_PUBLIC_DNS=$(aws ec2 describe-instances \
+          --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+          --query 'Reservations[*].Instances[*].PublicDnsName' \
+          --output text)
+        
+        # Deploy using SSH with the EC2 key
+        ssh -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'bash -s' < scripts/deploy.sh
