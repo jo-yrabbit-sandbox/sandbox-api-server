@@ -13,16 +13,31 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup SSH
+      - name: Setup SSH and Test Connection
         run: |
+          # Setup SSH directory and files
           mkdir -p ~/.ssh
-          touch ~/.ssh/known_hosts  # Create the known_hosts file
-          chmod 600 ~/.ssh/known_hosts  # Set proper permissions
+          touch ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/known_hosts
+
+          # Add EC2 key
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
-          # Debug output
-          ls -la ~/.ssh/ec2_key.pem
-          echo "SSH key permissions set"
+
+          # Get EC2 DNS
+          EC2_PUBLIC_DNS=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].PublicDnsName' \
+            --output text)
+          echo "EC2 Public DNS: $EC2_PUBLIC_DNS"
+
+          # Disable strict host key checking for this connection
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+          # Test SSH connection
+          ssh -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'echo "SSH connection test successful"'
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
