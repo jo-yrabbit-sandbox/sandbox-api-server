@@ -20,6 +20,26 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
           role-duration-seconds: 900
 
+      - name: Update Security Group
+        run: |
+          # Get runner's public IP
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "Runner IP: $RUNNER_IP"
+          
+          # Get security group ID
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Reservations[*].Instances[*].SecurityGroups[0].GroupId' \
+            --output text)
+          echo "Security Group ID: $SG_ID"
+          
+          # Add temporary rule for GitHub runner
+          aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 22 \
+            --cidr $RUNNER_IP/32
+
       - name: Setup SSH and Test Connection
         run: |
           # Setup SSH directory and files
@@ -45,26 +65,6 @@ jobs:
 
           # Test SSH connection
           ssh -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USERNAME }}@$EC2_PUBLIC_DNS 'echo "SSH connection test successful"'
-
-      - name: Update Security Group
-        run: |
-          # Get runner's public IP
-          RUNNER_IP=$(curl -s https://api.ipify.org)
-          echo "Runner IP: $RUNNER_IP"
-          
-          # Get security group ID
-          SG_ID=$(aws ec2 describe-instances \
-            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-            --query 'Reservations[*].Instances[*].SecurityGroups[0].GroupId' \
-            --output text)
-          echo "Security Group ID: $SG_ID"
-          
-          # Add temporary rule for GitHub runner
-          aws ec2 authorize-security-group-ingress \
-            --group-id $SG_ID \
-            --protocol tcp \
-            --port 22 \
-            --cidr $RUNNER_IP/32
 
       - name: Check EC2 Status
         run: |
