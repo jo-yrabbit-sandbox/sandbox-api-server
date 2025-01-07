@@ -13,6 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          touch ~/.ssh/known_hosts  # Create the known_hosts file
+          chmod 600 ~/.ssh/known_hosts  # Set proper permissions
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+          # Debug output
+          ls -la ~/.ssh/ec2_key.pem
+          echo "SSH key permissions set"
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -39,15 +50,6 @@ jobs:
             --protocol tcp \
             --port 22 \
             --cidr $RUNNER_IP/32
-
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
-          chmod 600 ~/.ssh/ec2_key.pem
-          # Debug output
-          ls -la ~/.ssh/ec2_key.pem
-          echo "SSH key permissions set"
 
       - name: Check EC2 Status
         run: |
